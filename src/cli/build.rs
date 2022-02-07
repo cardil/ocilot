@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use wax::Glob;
+
 use crate::core::build as core;
 
 pub struct Build {
@@ -12,50 +12,28 @@ pub struct Build {
 
 impl Build {
   pub fn to_core(&self) -> core::Build {
+    let base = self.base.to_owned();
+    let image = self.image.to_owned();
+    let tags = self.tags
+      .iter()
+      .cloned()
+      .collect();
+    let arch = self.arch
+      .iter()
+      .map(|repr| core::Arch::from_string(repr))
+      .map(|res| res.unwrap())
+      .collect();
+    let artifacts = self.artifacts
+      .iter()
+      .map(|repr| core::Artifact::from_string(repr))
+      .map(|res| res.unwrap())
+      .collect();
     return core::Build {
-      base: self.base.to_owned(),
-      image: self.image.to_owned(),
-      artifacts: HashSet::from([
-        core::Artifact{
-          arch: None,
-          from: Glob::new("/absolute/file.txt").unwrap(),
-          to: "/absolute/file.txt".to_string()
-        },
-        core::Artifact{
-          arch: None,
-          from: Glob::new("relative/file.txt").unwrap(),
-          to: "relative/file.txt".to_string()
-        },
-        core::Artifact{
-          arch: None,
-          from: Glob::new("file.txt").unwrap(),
-          to: "/usr/lib/renamed.txt".to_string()
-        },
-        core::Artifact{
-          arch: None,
-          from: Glob::new("target/*.jar").unwrap(),
-          to: "/usr/lib/app".to_string()
-        },
-        core::Artifact{
-          arch: Some(core::Arch::Amd64),
-          from: Glob::new("target/acme-linux-amd64").unwrap(),
-          to: "/usr/bin/acme".to_string()
-        },
-        core::Artifact{
-          arch: Some(core::Arch::Arm64),
-          from: Glob::new("target/acme-linux-arm64").unwrap(),
-          to: "/usr/bin/acme".to_string()
-        }
-      ]),
-      arch: HashSet::from([
-        core::Arch::Amd64,
-        core::Arch::Arm64
-      ]),
-      tags: HashSet::from([
-        "latest".to_string(),
-        "v1".to_string(),
-        "v1.1".to_string()
-      ])
+      tags,
+      base,
+      image,
+      arch,
+      artifacts,
     };
   }
 }
@@ -63,7 +41,9 @@ impl Build {
 #[cfg(test)]
 mod tests {
   use std::collections::HashSet;
+
   use wax::Glob;
+
   use crate::cli::build as cli;
   use crate::core::build as core;
 
@@ -90,42 +70,42 @@ mod tests {
         "latest".to_string(),
         "v1".to_string(),
         "v1.1".to_string()
-      ])
+      ]),
     };
     let got = input.to_core();
-    let want = core::Build{
+    let want = core::Build {
       base: base.to_string(),
       image: image.to_string(),
       artifacts: HashSet::from([
-        core::Artifact{
+        core::Artifact {
           arch: None,
           from: Glob::new("/absolute/file.txt").unwrap(),
-          to: "/absolute/file.txt".to_string()
+          to: "/absolute/file.txt".to_string(),
         },
-        core::Artifact{
+        core::Artifact {
           arch: None,
           from: Glob::new("relative/file.txt").unwrap(),
-          to: "relative/file.txt".to_string()
+          to: "relative/file.txt".to_string(),
         },
-        core::Artifact{
+        core::Artifact {
           arch: None,
           from: Glob::new("file.txt").unwrap(),
-          to: "/usr/lib/renamed.txt".to_string()
+          to: "/usr/lib/renamed.txt".to_string(),
         },
-        core::Artifact{
+        core::Artifact {
           arch: None,
           from: Glob::new("target/*.jar").unwrap(),
-          to: "/usr/lib/app".to_string()
+          to: "/usr/lib/app".to_string(),
         },
-        core::Artifact{
+        core::Artifact {
           arch: Some(core::Arch::Amd64),
           from: Glob::new("target/acme-linux-amd64").unwrap(),
-          to: "/usr/bin/acme".to_string()
+          to: "/usr/bin/acme".to_string(),
         },
-        core::Artifact{
+        core::Artifact {
           arch: Some(core::Arch::Arm64),
           from: Glob::new("target/acme-linux-arm64").unwrap(),
-          to: "/usr/bin/acme".to_string()
+          to: "/usr/bin/acme".to_string(),
         }
       ]),
       arch: HashSet::from([
@@ -136,7 +116,7 @@ mod tests {
         "latest".to_string(),
         "v1".to_string(),
         "v1.1".to_string()
-      ])
+      ]),
     };
     assert_eq!(got, want);
   }
