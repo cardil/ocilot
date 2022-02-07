@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 use std::io::{Error, ErrorKind};
-use regex::RegexBuilder;
 
 use ocilot_core::build as core;
+use regex::RegexBuilder;
 
 pub struct Build {
   pub base: String,
@@ -40,6 +40,13 @@ impl Build {
   }
 }
 
+fn invalid_format(repr: &String) -> Error {
+  Error::new(
+    ErrorKind::InvalidInput,
+    format!("invalid format for artifact: {:?}", repr),
+  )
+}
+
 fn artifact_from_string(repr: &String) -> Result<core::Artifact, Error> {
   // Ref.: https://regex101.com/r/q2qVXt/1
   let raw_re = r"^(?:(?P<arch>[^\n:]+):)?(?P<from>[^\n:]+)(?::(?P<to>[^\n:]+))?$";
@@ -47,36 +54,26 @@ fn artifact_from_string(repr: &String) -> Result<core::Artifact, Error> {
     .swap_greed(true)
     .build()
     .unwrap();
-  let empty = core::Artifact {
-    arch: None,
-    from: "".to_string(),
-    to: "".to_string(),
-  };
   match re.captures(repr) {
-    None => Result::Err(Error::new(
-      ErrorKind::InvalidInput, String::from(repr),
-    )),
+    None => Result::Err(invalid_format(repr)),
     Some(cap) => {
-      let from_result = cap.name("from").ok_or(Error::new(
-        ErrorKind::InvalidInput, String::from(repr),
-      )).map(|m| String::from(m.as_str()));
-      if from_result.is_err() {
-        return from_result.map(|_| empty);
-      }
-      let from = from_result.unwrap();
-      let to = match cap.name("to") {
-        None => String::from(&from),
-        Some(m) => String::from(m.as_str())
-      };
-      let arch_result = match cap.name("arch") {
-        None => Option::None,
-        Some(m) => Option::Some(arch_from_string(&m.as_str().to_string()))
-      }.transpose();
-      arch_result.map(|arch| core::Artifact {
-        arch,
-        from,
-        to
-      })
+      cap.name("from")
+        .ok_or(invalid_format(repr))
+        .map(|m| String::from(m.as_str()))
+        .and_then(|from| {
+          let to = match cap.name("to") {
+            None => String::from(&from),
+            Some(m) => String::from(m.as_str())
+          };
+          match cap.name("arch") {
+            None => Option::None,
+            Some(m) => Option::Some(arch_from_string(&m.as_str().to_string()))
+          }.transpose().map(|arch| core::Artifact {
+            arch,
+            from,
+            to,
+          })
+        })
     }
   }
 }
@@ -98,8 +95,9 @@ mod tests {
   use std::collections::HashSet;
   use std::io::{Error, ErrorKind};
 
-  use crate::cli::build as cli;
   use ocilot_core::build as core;
+
+  use crate::cli::build as cli;
 
   #[test]
   fn arch_from_string() {
@@ -110,7 +108,7 @@ mod tests {
       ("s390x", Result::Ok(core::Arch::S390x)),
       ("invalid", Result::Err(Error::new(
         ErrorKind::InvalidInput, "unknown arch: invalid"),
-      ))
+      )),
     ];
 
     for case in cases {
@@ -128,6 +126,18 @@ mod tests {
         assert_eq!(got_err.to_string(), want_err.to_string());
       }
     }
+  }
+
+  #[test]
+  fn artifact_from_string() {
+    let input = String::from("amd64:target/acme-linux-amd64:/usr/bin/acme:foo");
+    let res = cli::artifact_from_string(&input);
+    assert_eq!(res.is_err(), true);
+    let err = res.err().unwrap();
+    assert_eq!(err.kind(), ErrorKind::InvalidInput);
+    assert_eq!(err.to_string(),
+               concat!("invalid format for artifact: ",
+               "\"amd64:target/acme-linux-amd64:/usr/bin/acme:foo\""));
   }
 
   #[test]
