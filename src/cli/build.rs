@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::io::{Error, ErrorKind};
 use regex::RegexBuilder;
 
-use crate::core::build as core;
+use ocilot_core::build as core;
 
 pub struct Build {
   pub base: String,
@@ -41,7 +41,7 @@ impl Build {
 }
 
 fn artifact_from_string(repr: &String) -> Result<core::Artifact, Error> {
-// Ref.: https://regex101.com/r/q2qVXt/1
+  // Ref.: https://regex101.com/r/q2qVXt/1
   let raw_re = r"^(?:(?P<arch>[^\n:]+):)?(?P<from>[^\n:]+)(?::(?P<to>[^\n:]+))?$";
   let re = RegexBuilder::new(raw_re)
     .swap_greed(true)
@@ -99,7 +99,7 @@ mod tests {
   use std::io::{Error, ErrorKind};
 
   use crate::cli::build as cli;
-  use crate::core::build as core;
+  use ocilot_core::build as core;
 
   #[test]
   fn arch_from_string() {
