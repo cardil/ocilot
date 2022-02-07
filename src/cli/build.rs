@@ -1,4 +1,6 @@
 use std::collections::HashSet;
+use std::io::{Error, ErrorKind};
+use regex::RegexBuilder;
 
 use crate::core::build as core;
 
@@ -20,12 +22,12 @@ impl Build {
       .collect();
     let arch = self.arch
       .iter()
-      .map(|repr| core::Arch::from_string(repr))
+      .map(|repr| arch_from_string(repr))
       .map(|res| res.unwrap())
       .collect();
     let artifacts = self.artifacts
       .iter()
-      .map(|repr| core::Artifact::from_string(repr))
+      .map(|repr| artifact_from_string(repr))
       .map(|res| res.unwrap())
       .collect();
     return core::Build {
@@ -38,14 +40,95 @@ impl Build {
   }
 }
 
+fn artifact_from_string(repr: &String) -> Result<core::Artifact, Error> {
+// Ref.: https://regex101.com/r/q2qVXt/1
+  let raw_re = r"^(?:(?P<arch>[^\n:]+):)?(?P<from>[^\n:]+)(?::(?P<to>[^\n:]+))?$";
+  let re = RegexBuilder::new(raw_re)
+    .swap_greed(true)
+    .build()
+    .unwrap();
+  let empty = core::Artifact {
+    arch: None,
+    from: "".to_string(),
+    to: "".to_string(),
+  };
+  match re.captures(repr) {
+    None => Result::Err(Error::new(
+      ErrorKind::InvalidInput, String::from(repr),
+    )),
+    Some(cap) => {
+      let from_result = cap.name("from").ok_or(Error::new(
+        ErrorKind::InvalidInput, String::from(repr),
+      )).map(|m| String::from(m.as_str()));
+      if from_result.is_err() {
+        return from_result.map(|_| empty);
+      }
+      let from = from_result.unwrap();
+      let to = match cap.name("to") {
+        None => String::from(&from),
+        Some(m) => String::from(m.as_str())
+      };
+      let arch_result = match cap.name("arch") {
+        None => Option::None,
+        Some(m) => Option::Some(arch_from_string(&m.as_str().to_string()))
+      }.transpose();
+      arch_result.map(|arch| core::Artifact {
+        arch,
+        from,
+        to
+      })
+    }
+  }
+}
+
+fn arch_from_string(repr: &String) -> Result<core::Arch, Error> {
+  match repr.to_lowercase().as_str() {
+    "amd64" => Result::Ok(core::Arch::Amd64),
+    "arm64" => Result::Ok(core::Arch::Arm64),
+    "ppc64le" => Result::Ok(core::Arch::Ppc64le),
+    "s390x" => Result::Ok(core::Arch::S390x),
+    other => Result::Err(Error::new(
+      ErrorKind::InvalidInput, format!("unknown arch: {}", other),
+    ))
+  }
+}
+
 #[cfg(test)]
 mod tests {
   use std::collections::HashSet;
-
-  use wax::Glob;
+  use std::io::{Error, ErrorKind};
 
   use crate::cli::build as cli;
   use crate::core::build as core;
+
+  #[test]
+  fn arch_from_string() {
+    let cases = vec![
+      ("amd64", Result::Ok(core::Arch::Amd64)),
+      ("arm64", Result::Ok(core::Arch::Arm64)),
+      ("ppc64le", Result::Ok(core::Arch::Ppc64le)),
+      ("s390x", Result::Ok(core::Arch::S390x)),
+      ("invalid", Result::Err(Error::new(
+        ErrorKind::InvalidInput, "unknown arch: invalid"),
+      ))
+    ];
+
+    for case in cases {
+      let repr = String::from(case.0);
+      let want = case.1;
+      let got = cli::arch_from_string(&repr);
+
+      assert_eq!(got.is_ok(), want.is_ok());
+      if want.is_ok() {
+        assert_eq!(got.ok(), want.ok());
+      } else {
+        let got_err = got.err().unwrap();
+        let want_err = want.err().unwrap();
+        assert_eq!(got_err.kind(), want_err.kind());
+        assert_eq!(got_err.to_string(), want_err.to_string());
+      }
+    }
+  }
 
   #[test]
   fn to_core() {
@@ -79,32 +162,32 @@ mod tests {
       artifacts: HashSet::from([
         core::Artifact {
           arch: None,
-          from: Glob::new("/absolute/file.txt").unwrap(),
+          from: "/absolute/file.txt".to_string(),
           to: "/absolute/file.txt".to_string(),
         },
         core::Artifact {
           arch: None,
-          from: Glob::new("relative/file.txt").unwrap(),
+          from: "relative/file.txt".to_string(),
           to: "relative/file.txt".to_string(),
         },
         core::Artifact {
           arch: None,
-          from: Glob::new("file.txt").unwrap(),
+          from: "file.txt".to_string(),
           to: "/usr/lib/renamed.txt".to_string(),
         },
         core::Artifact {
           arch: None,
-          from: Glob::new("target/*.jar").unwrap(),
+          from: "target/*.jar".to_string(),
           to: "/usr/lib/app".to_string(),
         },
         core::Artifact {
           arch: Some(core::Arch::Amd64),
-          from: Glob::new("target/acme-linux-amd64").unwrap(),
+          from: "target/acme-linux-amd64".to_string(),
           to: "/usr/bin/acme".to_string(),
         },
         core::Artifact {
           arch: Some(core::Arch::Arm64),
-          from: Glob::new("target/acme-linux-arm64").unwrap(),
+          from: "target/acme-linux-arm64".to_string(),
           to: "/usr/bin/acme".to_string(),
         }
       ]),
