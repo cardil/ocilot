@@ -1,15 +1,39 @@
-use std::collections::HashSet;
 use std::io::{Error, ErrorKind};
 
 use ocilot_core::build as core;
 use regex::RegexBuilder;
+use clap::Args;
 
+#[derive(Debug, Args)]
 pub struct Build {
-  pub base: String,
-  pub artifacts: HashSet<String>,
-  pub image: String,
-  pub arch: HashSet<String>,
-  pub tags: HashSet<String>,
+  /// A base image to build upon. Short image name will resolve to docker.io
+  #[clap(short = 'b', long = "base", required = true)]
+  base: String,
+  /// Image name to build, without tags. Short image name will resolve to docker.io
+  #[clap(short = 'i', long = "image", required = true)]
+  image: String,
+  #[clap(short = 'a', long = "artifact", multiple_occurrences = true, required = true,
+  help = concat!(
+  "Artifact(s) to add on top of base image. Repeat the option to add\n",
+  "multiple artifacts. Artifact spec needs to be in form:\n",
+  "\"[arch:]<file-or-glob-on-host>[:file-or-dir-on-image]\".\n\nSome examples:\n",
+  " - relative/file.txt\n",
+  " - /absolute/file.txt\n",
+  " - file.txt:/usr/lib/renamed.txt\n",
+  " - target/*.jar:/usr/lib/app\n",
+  " - amd64:target/acme-linux-amd64:/usr/bin/acme\n",
+  " - arm64:target/acme-linux-arm64:/usr/bin/acme"
+  ))]
+  artifacts: Vec<String>,
+  /// Architectures to build the image for. Repeat the option to add
+  /// multiple values. If not given the architectures from base image will
+  /// be used.
+  #[clap(long = "arch", multiple_occurrences = true)]
+  arch: Vec<String>,
+  /// Tags to assign to the built image. Repeat the option to add multiple
+  /// values. If not given the no tags will be used.
+  #[clap(short = 't', long = "tag", multiple_occurrences = true)]
+  tags: Vec<String>
 }
 
 impl Build {
@@ -147,23 +171,23 @@ mod tests {
     let input = cli::Build {
       base: base.to_string(),
       image: image.to_string(),
-      artifacts: HashSet::from([
+      artifacts: vec![
         "relative/file.txt".to_string(),
         "/absolute/file.txt".to_string(),
         "file.txt:/usr/lib/renamed.txt".to_string(),
         "target/*.jar:/usr/lib/app".to_string(),
         "amd64:target/acme-linux-amd64:/usr/bin/acme".to_string(),
         "arm64:target/acme-linux-arm64:/usr/bin/acme".to_string(),
-      ]),
-      arch: HashSet::from([
+      ],
+      arch: vec![
         "amd64".to_string(),
         "arm64".to_string()
-      ]),
-      tags: HashSet::from([
+      ],
+      tags: vec![
         "latest".to_string(),
         "v1".to_string(),
         "v1.1".to_string()
-      ]),
+      ]
     };
     let got = input.to_core();
     let want = core::Build {

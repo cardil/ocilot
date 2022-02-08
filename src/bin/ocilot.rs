@@ -1,3 +1,5 @@
+use ocilot::cli::args;
+
 fn main() {
-  println!("Ocilot - Create and publish OCI images.")
+  args::execute(None);
 }
