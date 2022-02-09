@@ -1,9 +1,11 @@
 use std::io::{Error, ErrorKind};
 
 use clap::Args;
-use tracing::{debug, error, info, trace, warn};
 use ocilot_core::build as core;
 use regex::RegexBuilder;
+use tracing::{debug, error, info, trace, warn};
+use tracing::instrument;
+
 use cli::{args, error};
 
 use crate::cli;
@@ -59,7 +61,9 @@ impl args::Executable for Build {
     None
   }
 }
+
 impl Build {
+  #[instrument]
   pub fn to_core(&self) -> core::Build {
     let base = self.base.to_owned();
     let image = self.image.to_owned();
@@ -77,6 +81,7 @@ impl Build {
       .map(|repr| artifact_from_string(repr))
       .map(|res| res.unwrap())
       .collect();
+    trace!("inside to_core, within span");
     return core::Build {
       tags,
       base,
