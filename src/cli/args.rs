@@ -3,11 +3,13 @@ use std::fmt::Debug;
 
 use clap;
 use clap::Parser;
+use tracing::Level;
 
 use crate::cli::{build, logging};
 use crate::cli::error;
 use crate::cli::list;
 use crate::cli::publish;
+use crate::cli::verbosity::Verbosity;
 
 #[derive(Parser, Debug)]
 #[clap(name = "Ocilot", author, version, about)]
@@ -17,8 +19,11 @@ pub(crate) struct Args {
   command: Commands,
 
   /// The format to output.
-  #[clap(arg_enum, short = 'o', long = "output", global = true, default_value = "human")]
+  #[clap(arg_enum, short = 'o', long, global = true, default_value = "human")]
   output: Format,
+
+  #[clap(flatten)]
+  verbose: Verbosity,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, clap::ArgEnum)]
@@ -89,12 +94,15 @@ fn try_execute(ctx: ExecutionContext) -> Option<error::Error> {
 }
 
 fn try_execute_with_args(ctx: ExecutionContext, args: Args) -> Option<error::Error> {
+  let mut verbose = args.verbose.clone();
+  verbose.set_default(Some(Level::INFO));
   let cfg = logging::Config {
     format: match args.output {
       Format::Human => logging::Format::Compact,
       Format::Json => logging::Format::Json
     },
     kind: ctx.output.logger,
+    level: verbose.log_level(),
   };
   logging::configured(cfg, || {
     // the subscriber based on RUST_LOG envvar will only be set as the default

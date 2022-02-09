@@ -11,28 +11,35 @@ use crate::cli;
 #[derive(Debug, Args)]
 pub struct Build {
   /// A base image to build upon. Short image name will resolve to docker.io
-  #[clap(short = 'b', long = "base", required = true)]
+  #[clap(short = 'b', long, required = true)]
   base: String,
   /// Image name to build, without tags. Short image name will resolve to docker.io
-  #[clap(short = 'i', long = "image", required = true)]
+  #[clap(short = 'i', long, required = true)]
   image: String,
-  #[clap(short = 'a', long = "artifact", multiple_occurrences = true, required = true,
-  help = concat ! (
-  "Artifact(s) to add on top of base image. Repeat the option to add\n",
-  "multiple artifacts. Artifact spec needs to be in form:\n",
-  "\"[arch:]<file-or-glob-on-host>[:file-or-dir-on-image]\".\n\nSome examples:\n",
-  " - relative/file.txt\n",
-  " - /absolute/file.txt\n",
-  " - file.txt:/usr/lib/renamed.txt\n",
-  " - target/*.jar:/usr/lib/app\n",
-  " - amd64:target/acme-linux-amd64:/usr/bin/acme\n",
-  " - arm64:target/acme-linux-arm64:/usr/bin/acme"
-  ))]
+  /// Artifact(s) to add on top of base image. Repeat the option to add
+  /// multiple artifacts. Artifact spec needs to be in form:
+  ///
+  /// "[arch:]<file-or-glob-on-host>[:file-or-dir-on-image]".
+  ///
+  /// Example forms:
+  ///
+  ///  --artifact relative/file.txt
+  ///
+  ///  --artifact /absolute/file.txt
+  ///
+  ///  -a file.txt:/usr/lib/renamed.txt
+  ///
+  ///  -a target/*.jar:/usr/lib/app
+  ///
+  ///  -a amd64:target/acme-linux-amd64:/usr/bin/acme
+  ///
+  ///  -a arm64:target/acme-linux-arm64:/usr/bin/acme
+  #[clap(short = 'a', long = "artifact", multiple_occurrences = true, required = true)]
   artifacts: Vec<String>,
   /// Architectures to build the image for. Repeat the option to add
   /// multiple values. If not given the architectures from base image will
   /// be used.
-  #[clap(long = "arch", multiple_occurrences = true)]
+  #[clap(long, multiple_occurrences = true)]
   arch: Vec<String>,
   /// Tags to assign to the built image. Repeat the option to add multiple
   /// values. If not given the no tags will be used.
@@ -45,8 +52,9 @@ impl args::Executable for Build {
     trace!(args = ?args);
     warn!("o_O");
     error!("boom");
+    debug!("Building...");
     let c = self.to_core();
-    debug!(build = ?c, "Building...");
+    trace!(build = ?c);
     info!("Build successful.");
     None
   }

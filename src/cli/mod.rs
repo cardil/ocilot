@@ -4,3 +4,4 @@ pub mod publish;
 pub mod list;
 pub mod error;
 mod logging;
+mod verbosity;

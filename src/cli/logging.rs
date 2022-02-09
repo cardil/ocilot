@@ -2,7 +2,7 @@ use std::fmt;
 use std::fs::File;
 use std::time::Instant;
 
-use tracing::{error, Level};
+use tracing::{debug, error, Level};
 use tracing_subscriber;
 use tracing_subscriber::fmt::{Layer, TestWriter};
 use tracing_subscriber::fmt::format::Writer;
@@ -18,6 +18,7 @@ use crate::cli::error::Cause;
 pub struct Config {
   pub format: Format,
   pub kind: WriterKind,
+  pub level: Option<Level>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -74,12 +75,14 @@ pub fn configured(cfg: Config, f: impl FnOnce() -> Option<error::Error>) -> Opti
 
   let handle_err = || {
     let maybe_err = f();
+    let hint = "Consider checking the logfile for complete logs of last execution";
     match &maybe_err {
-      None => {}
+      None => {
+        debug!(hint, logfile = ?logfile_path);
+      }
       Some(err) => match &err.cause {
         Cause::Args(_) => {}
         Cause::Unexpected(fatal) => {
-          let hint = "Consider checking the logfile for complete logs of last execution";
           error!(
             hint,
             logfile = ?logfile_path,
@@ -105,10 +108,13 @@ pub fn configured(cfg: Config, f: impl FnOnce() -> Option<error::Error>) -> Opti
 }
 
 fn writer(cfg: &Config) -> BoxMakeWriter {
-  let enable_level = Level::INFO;
+  let enable_level = cfg.level.unwrap_or(Level::ERROR);
+  let enable = cfg.level.is_some();
   match cfg.kind {
     WriterKind::Regular => BoxMakeWriter::new(std::io::stderr
-      .with_max_level(enable_level)),
+      .with_max_level(enable_level)
+      .with_filter(move |_| enable)
+    ),
     WriterKind::Test => BoxMakeWriter::new(TestWriter::default())
   }
 }
