@@ -1,8 +1,12 @@
 use std::io::{Error, ErrorKind};
 
+use clap::Args;
+use tracing::{debug, error, info, trace, warn};
 use ocilot_core::build as core;
 use regex::RegexBuilder;
-use clap::Args;
+use cli::{args, error};
+
+use crate::cli;
 
 #[derive(Debug, Args)]
 pub struct Build {
@@ -13,7 +17,7 @@ pub struct Build {
   #[clap(short = 'i', long = "image", required = true)]
   image: String,
   #[clap(short = 'a', long = "artifact", multiple_occurrences = true, required = true,
-  help = concat!(
+  help = concat ! (
   "Artifact(s) to add on top of base image. Repeat the option to add\n",
   "multiple artifacts. Artifact spec needs to be in form:\n",
   "\"[arch:]<file-or-glob-on-host>[:file-or-dir-on-image]\".\n\nSome examples:\n",
@@ -33,9 +37,19 @@ pub struct Build {
   /// Tags to assign to the built image. Repeat the option to add multiple
   /// values. If not given the no tags will be used.
   #[clap(short = 't', long = "tag", multiple_occurrences = true)]
-  tags: Vec<String>
+  tags: Vec<String>,
 }
 
+impl args::Executable for Build {
+  fn execute(&self, args: &args::Args) -> Option<error::Error> {
+    trace!(args = ?args, "such information");
+    warn!(args = ?args, "o_O");
+    error!(args = ?args, "boom");
+    debug!(args = ?args, "deboogging");
+    info!(args = ?args, "Building: {:?}", self.to_core());
+    None
+  }
+}
 impl Build {
   pub fn to_core(&self) -> core::Build {
     let base = self.base.to_owned();
@@ -181,13 +195,13 @@ mod tests {
       ],
       arch: vec![
         "amd64".to_string(),
-        "arm64".to_string()
+        "arm64".to_string(),
       ],
       tags: vec![
         "latest".to_string(),
         "v1".to_string(),
-        "v1.1".to_string()
-      ]
+        "v1.1".to_string(),
+      ],
     };
     let got = input.to_core();
     let want = core::Build {
