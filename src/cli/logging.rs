@@ -79,15 +79,14 @@ pub fn configured(cfg: Config, f: impl FnOnce() -> Option<error::Error>) -> Opti
       Some(err) => match &err.cause {
         Cause::Args(_) => {}
         Cause::Unexpected(fatal) => {
-          let details = format!("{:?}", fatal);
-          let logfile = logfile_path.as_path().to_str();
           let hint = "Consider checking the logfile for complete logs of last execution";
           error!(
             hint,
-            logfile,
-            details = details.as_str(),
+            logfile = ?logfile_path,
+            debug = ?fatal,
+            source = ?fatal.source(),
             "Unexpected: '{}'",
-            fatal.to_string()
+            fatal
           )
         }
       }
