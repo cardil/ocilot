@@ -2,19 +2,37 @@ use std::fmt;
 use std::fs::File;
 use std::time::Instant;
 
-use tracing::error;
+use tracing::{error, Level};
 use tracing_subscriber;
+use tracing_subscriber::fmt::{Layer, TestWriter};
 use tracing_subscriber::fmt::format::Writer;
-use tracing_subscriber::fmt::TestWriter;
 use tracing_subscriber::fmt::time::FormatTime;
 use tracing_subscriber::fmt::writer::{BoxMakeWriter, MakeWriterExt};
 use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::Registry;
 
-use crate::cli::{args, error};
-use crate::cli::args::WriterKind;
+use crate::cli::error;
 use crate::cli::error::Cause;
 
-pub fn configured(ctx: args::ExecutionContext, f: impl FnOnce() -> Option<error::Error>) -> Option<error::Error> {
+#[derive(Debug, PartialEq)]
+pub struct Config {
+  pub format: Format,
+  pub kind: WriterKind,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum Format {
+  Compact,
+  Json,
+}
+
+#[derive(Debug, PartialEq)]
+pub enum WriterKind {
+  Regular,
+  Test,
+}
+
+pub fn configured(cfg: Config, f: impl FnOnce() -> Option<error::Error>) -> Option<error::Error> {
   let config_dir = dirs::config_dir().expect("Failed to get config dir");
   let ocilot_dir = config_dir.join("ocilot");
   let logfile_path = ocilot_dir.join("last-log.jsonl");
@@ -28,7 +46,7 @@ pub fn configured(ctx: args::ExecutionContext, f: impl FnOnce() -> Option<error:
   let (non_blocking, _guard) =
     tracing_appender::non_blocking(logfile);
 
-  let file_layer = tracing_subscriber::fmt::Layer::new()
+  let file_layer = Layer::new()
     .json()
     .with_file(true)
     .with_line_number(true)
@@ -36,24 +54,25 @@ pub fn configured(ctx: args::ExecutionContext, f: impl FnOnce() -> Option<error:
     .with_thread_names(true)
     .with_thread_ids(true)
     .with_writer(non_blocking);
-  let enable_level = tracing::Level::INFO;
-  let writer = match ctx.logger.writer {
-    WriterKind::Regular => BoxMakeWriter::new(std::io::stderr.with_max_level(enable_level)),
-    WriterKind::Test => BoxMakeWriter::new(TestWriter::default())
-  };
 
-  let stderr_layer = tracing_subscriber::fmt::Layer::new()
-    .with_writer(writer)
-    .pretty()
+  let json_layer = Layer::new()
+    .json()
+    .with_writer(writer(&cfg))
+    .with_file(true)
+    .with_line_number(true)
+    .with_target(true);
+  let stderr_layer = Layer::new()
+    .compact()
+    .with_writer(writer(&cfg))
     .with_file(false)
     .with_line_number(false)
     .with_target(true)
     .with_timer(Uptime::default());
-  let subscriber = tracing_subscriber::registry()
-    .with(stderr_layer)
+
+  let base_subscriber = Registry::default()
     .with(file_layer);
 
-  tracing::subscriber::with_default(subscriber, || {
+  let handle_err = || {
     let maybe_err = f();
     match &maybe_err {
       None => {}
@@ -74,7 +93,25 @@ pub fn configured(ctx: args::ExecutionContext, f: impl FnOnce() -> Option<error:
       }
     }
     maybe_err
-  })
+  };
+
+  match cfg.format {
+    Format::Compact =>
+      tracing::subscriber::with_default(
+        base_subscriber.with(stderr_layer), handle_err),
+    Format::Json =>
+      tracing::subscriber::with_default(
+        base_subscriber.with(json_layer), handle_err),
+  }
+}
+
+fn writer(cfg: &Config) -> BoxMakeWriter {
+  let enable_level = Level::INFO;
+  match cfg.kind {
+    WriterKind::Regular => BoxMakeWriter::new(std::io::stderr
+      .with_max_level(enable_level)),
+    WriterKind::Test => BoxMakeWriter::new(TestWriter::default())
+  }
 }
 
 /// Retrieve and print the relative elapsed wall-clock time since an epoch.

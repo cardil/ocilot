@@ -42,11 +42,12 @@ pub struct Build {
 
 impl args::Executable for Build {
   fn execute(&self, args: &args::Args) -> Option<error::Error> {
-    trace!(args = ?args, "such information");
-    warn!(args = ?args, "o_O");
-    error!(args = ?args, "boom");
-    debug!(args = ?args, "deboogging");
-    info!(args = ?args, "Building: {:?}", self.to_core());
+    trace!(args = ?args);
+    warn!("o_O");
+    error!("boom");
+    let c = self.to_core();
+    debug!(build = ?c, "Building...");
+    info!("Build successful.");
     None
   }
 }

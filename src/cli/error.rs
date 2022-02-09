@@ -38,6 +38,6 @@ fn safe_exit(code: i32) -> ! {
 fn retcode(err: &Box<dyn error::Error + Send + Sync>) -> i32 {
   let mut hasher = DefaultHasher::new();
   hasher.write(err.to_string().as_bytes());
-  // align to range: 3-255, clap gets: 2 on usage
-  (hasher.finish() % 253 + 3) as i32
+  // align to range: 30-255
+  (hasher.finish() % 226 + 30) as i32
 }

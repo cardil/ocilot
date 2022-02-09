@@ -25,7 +25,6 @@ pub(crate) struct Args {
 enum Format {
   Human,
   Json,
-  Yaml,
 }
 
 #[derive(clap::Subcommand, Debug)]
@@ -43,27 +42,31 @@ pub(crate) trait Executable {
 }
 
 #[derive(Debug)]
-pub struct LoggerConfig {
-  pub writer: WriterKind,
+pub enum Console {
+  Real(std::io::Stdout),
+  Test(Vec<u8>),
 }
 
-#[derive(Debug, PartialEq)]
-pub enum WriterKind {
-  Regular,
-  Test,
+#[derive(Debug)]
+pub struct Output {
+  pub logger: logging::WriterKind,
+  pub console: Console,
 }
 
 #[derive(Debug)]
 pub struct ExecutionContext {
   pub args: Vec<String>,
-  pub logger: LoggerConfig,
+  pub output: Output,
 }
 
 impl ExecutionContext {
   fn default() -> ExecutionContext {
     ExecutionContext {
       args: env::args().collect(),
-      logger: LoggerConfig { writer: WriterKind::Regular },
+      output: Output {
+        logger: logging::WriterKind::Regular,
+        console: Console::Real(std::io::stdout()),
+      },
     }
   }
 }
@@ -86,7 +89,14 @@ fn try_execute(ctx: ExecutionContext) -> Option<error::Error> {
 }
 
 fn try_execute_with_args(ctx: ExecutionContext, args: Args) -> Option<error::Error> {
-  logging::configured(ctx, || {
+  let cfg = logging::Config {
+    format: match args.output {
+      Format::Human => logging::Format::Compact,
+      Format::Json => logging::Format::Json
+    },
+    kind: ctx.output.logger,
+  };
+  logging::configured(cfg, || {
     // the subscriber based on RUST_LOG envvar will only be set as the default
     // inside this closure...
     match &args.command {
@@ -99,8 +109,7 @@ fn try_execute_with_args(ctx: ExecutionContext, args: Args) -> Option<error::Err
 
 #[cfg(test)]
 mod tests {
-  use crate::cli::args;
-  use crate::cli::args::{LoggerConfig, WriterKind};
+  use crate::cli::{args, logging};
   use crate::cli::error::Cause;
 
   #[test]
@@ -148,7 +157,7 @@ mod tests {
   #[test]
   fn list() {
     let tec = TestExecutionContext::new(
-      vec!["ocilot", "list", "--output", "yaml"]
+      vec!["ocilot", "list", "--output", "json"]
     );
 
     let maybe_err = args::try_execute(tec.ctx());
@@ -158,21 +167,24 @@ mod tests {
 
   struct TestExecutionContext<'a> {
     args: Vec<&'a str>,
-    logger: LoggerConfig,
+    output: args::Output,
   }
 
   impl TestExecutionContext<'_> {
     fn new(args: Vec<&str>) -> TestExecutionContext {
       TestExecutionContext {
         args,
-        logger: LoggerConfig { writer: WriterKind::Test },
+        output: args::Output {
+          logger: logging::WriterKind::Test,
+          console: args::Console::Test(Vec::new()),
+        },
       }
     }
 
     fn ctx(self) -> args::ExecutionContext {
       args::ExecutionContext {
         args: self.args.iter().map(|s| s.to_string()).collect(),
-        logger: self.logger,
+        output: self.output,
       }
     }
   }
