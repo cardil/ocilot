@@ -13,7 +13,13 @@ pub struct Verbosity {
   ///
   /// By default, it'll report infos, warns, and errors. Passing `-q` one time
   /// limits to warns and errors, `-qq` limits to errors, `-qqq` disable logs.
-  #[clap(long, short = 'q', parse(from_occurrences), conflicts_with = "verbose", global = true)]
+  #[clap(
+    long,
+    short = 'q',
+    parse(from_occurrences),
+    conflicts_with = "verbose",
+    global = true
+  )]
   quiet: i8,
 
   #[clap(skip)]
@@ -80,24 +86,26 @@ mod test {
       verbose: Verbosity,
     }
 
-    let cases = [TestCase {
-      input: "-vv",
-      default: Some(Level::ERROR),
-      want: Some(Level::INFO),
-    }, TestCase {
-      input: "-q",
-      default: Some(Level::INFO),
-      want: Some(Level::WARN),
-    }, TestCase {
-      input: "-qqq",
-      default: Some(Level::INFO),
-      want: None,
-    }];
+    let cases = [
+      TestCase {
+        input: "-vv",
+        default: Some(Level::ERROR),
+        want: Some(Level::INFO),
+      },
+      TestCase {
+        input: "-q",
+        default: Some(Level::INFO),
+        want: Some(Level::WARN),
+      },
+      TestCase {
+        input: "-qqq",
+        default: Some(Level::INFO),
+        want: None,
+      },
+    ];
 
     for case in cases {
-      let result_args = <Args as Parser>::try_parse_from([
-        "app", case.input
-      ]);
+      let result_args = <Args as Parser>::try_parse_from(["app", case.input]);
       match result_args {
         Err(err) => panic!("{}", err),
         Ok(args) => {

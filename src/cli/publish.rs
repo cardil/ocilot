@@ -14,12 +14,10 @@ impl args::Executable for Publish {
   fn execute(&self, args: &args::Args) -> Option<error::Error> {
     info!(args = ?args, "Publishing: {:?}", self);
     Some(error::Error {
-      cause: error::Cause::Unexpected(
-        Box::new(io::Error::new(
-          io::ErrorKind::InvalidData, io::Error::new(
-            io::ErrorKind::BrokenPipe, "Not yet implemented"),
-        ))
-      ),
+      cause: error::Cause::Unexpected(Box::new(io::Error::new(
+        io::ErrorKind::InvalidData,
+        io::Error::new(io::ErrorKind::BrokenPipe, "Not yet implemented"),
+      ))),
     })
   }
 }

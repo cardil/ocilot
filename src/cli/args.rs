@@ -6,11 +6,11 @@ use clap;
 use clap::Parser;
 use tracing::Level;
 
-use crate::cli::{build, logging};
 use crate::cli::error;
 use crate::cli::list;
 use crate::cli::publish;
 use crate::cli::verbosity::Verbosity;
+use crate::cli::{build, logging};
 
 #[derive(Parser, Debug)]
 #[clap(name = "Ocilot", author, version, about)]
@@ -52,8 +52,7 @@ enum Commands {
 
 impl Args {
   pub fn ocilot_dir(&self) -> Option<PathBuf> {
-    let default_dir = || dirs::cache_dir()
-      .map(|p| p.join("ocilot"));
+    let default_dir = || dirs::cache_dir().map(|p| p.join("ocilot"));
     self.cachedir.clone().or_else(default_dir)
   }
 }
@@ -93,8 +92,7 @@ impl ExecutionContext {
 }
 
 pub fn execute(ox: Option<ExecutionContext>) {
-  try_execute(ox.unwrap_or(ExecutionContext::default()))
-    .map(|err| err.exit());
+  try_execute(ox.unwrap_or(ExecutionContext::default())).map(|err| err.exit());
 }
 
 fn try_execute(ctx: ExecutionContext) -> Option<error::Error> {
@@ -104,20 +102,19 @@ fn try_execute(ctx: ExecutionContext) -> Option<error::Error> {
   match result_args {
     Ok(args) => try_execute_with_args(ctx, args),
     Err(err) => Some(error::Error {
-      cause: error::Cause::Args(err)
-    })
+      cause: error::Cause::Args(err),
+    }),
   }
 }
 
 fn try_execute_with_args(ctx: ExecutionContext, args: Args) -> Option<error::Error> {
   let mut verbose = args.verbose.clone();
   verbose.set_default(Some(Level::INFO));
-  let cache_dir = args.ocilot_dir()
-    .expect("Failed to get cache dir");
+  let cache_dir = args.ocilot_dir().expect("Failed to get cache dir");
   let cfg = logging::Config {
     format: match args.output {
       Format::Human => logging::Format::Compact,
-      Format::Json => logging::Format::Json
+      Format::Json => logging::Format::Json,
     },
     kind: ctx.output.logger,
     level: verbose.log_level(),
@@ -136,14 +133,12 @@ fn try_execute_with_args(ctx: ExecutionContext, args: Args) -> Option<error::Err
 
 #[cfg(test)]
 mod tests {
-  use crate::cli::{args, logging};
   use crate::cli::error::Cause;
+  use crate::cli::{args, logging};
 
   #[test]
   fn help() {
-    let tec = TestExecutionContext::new(
-      vec!["ocilot", "help"],
-    );
+    let tec = TestExecutionContext::new(vec!["ocilot", "help"]);
 
     let maybe_err = args::try_execute(tec.ctx());
 
@@ -162,9 +157,7 @@ mod tests {
 
   #[test]
   fn version() {
-    let tec = TestExecutionContext::new(
-      vec!["ocilot", "--version"],
-    );
+    let tec = TestExecutionContext::new(vec!["ocilot", "--version"]);
 
     let maybe_err = args::try_execute(tec.ctx());
 
@@ -183,13 +176,20 @@ mod tests {
 
   #[test]
   fn list() {
-    let tec = TestExecutionContext::new(
-      vec!["ocilot", "list", "--output", "json"]
-    );
+    let tec = TestExecutionContext::new(vec!["ocilot", "list", "--output", "json"]);
 
     let maybe_err = args::try_execute(tec.ctx());
 
     assert!(maybe_err.is_none());
+  }
+
+  #[test]
+  fn publish() {
+    let tec = TestExecutionContext::new(vec!["ocilot", "publish"]);
+
+    let maybe_err = args::try_execute(tec.ctx());
+
+    assert!(maybe_err.is_some());
   }
 
   struct TestExecutionContext<'a> {

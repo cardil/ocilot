@@ -13,9 +13,7 @@ impl Error {
   pub fn exit(&self) -> ! {
     match &self.cause {
       Cause::Args(err) => err.exit(),
-      Cause::Unexpected(err) => {
-        safe_exit(retcode(err))
-      }
+      Cause::Unexpected(err) => safe_exit(retcode(err)),
     }
   }
 }

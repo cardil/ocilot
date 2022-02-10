@@ -1,14 +1,14 @@
-use std::{fmt, fs};
 use std::fs::File;
 use std::path::PathBuf;
 use std::time::Instant;
+use std::{fmt, fs};
 
 use tracing::{debug, error, Level};
 use tracing_subscriber;
-use tracing_subscriber::fmt::{Layer, TestWriter};
 use tracing_subscriber::fmt::format::Writer;
 use tracing_subscriber::fmt::time::FormatTime;
 use tracing_subscriber::fmt::writer::{BoxMakeWriter, MakeWriterExt};
+use tracing_subscriber::fmt::{Layer, TestWriter};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::Registry;
 
@@ -84,13 +84,13 @@ pub fn configured(cfg: Config, f: impl FnOnce() -> Option<error::Error>) -> Opti
         Cause::Args(_) => {}
         Cause::Unexpected(fatal) => {
           error!(
-                      hint,
-                      logfile = ?logfile_path,
-                      debug = ?fatal,
-                      source = ?fatal.source(),
-                      "Unexpected: '{}'",
-                      fatal
-                    )
+            hint,
+            logfile = ?logfile_path,
+            debug = ?fatal,
+            source = ?fatal.source(),
+            "Unexpected: '{}'",
+            fatal
+          )
         }
       },
     }
@@ -101,9 +101,7 @@ pub fn configured(cfg: Config, f: impl FnOnce() -> Option<error::Error>) -> Opti
     Format::Compact => {
       tracing::subscriber::with_default(base_subscriber.with(stderr_layer), handle_err)
     }
-    Format::Json => {
-      tracing::subscriber::with_default(base_subscriber.with(json_layer), handle_err)
-    }
+    Format::Json => tracing::subscriber::with_default(base_subscriber.with(json_layer), handle_err),
   }
 }
 
