@@ -41,7 +41,7 @@ pub struct Build {
   /// Architectures to build the image for. Repeat the option to add
   /// multiple values. If not given the architectures from base image will
   /// be used.
-  #[clap(long, multiple_occurrences = true)]
+  #[clap(short = 'A', long, multiple_occurrences = true)]
   arch: Vec<String>,
   /// Tags to assign to the built image. Repeat the option to add multiple
   /// values. If not given the no tags will be used.

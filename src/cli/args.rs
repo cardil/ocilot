@@ -1,5 +1,6 @@
 use std::env;
 use std::fmt::Debug;
+use std::path::PathBuf;
 
 use clap;
 use clap::Parser;
@@ -24,6 +25,13 @@ pub(crate) struct Args {
 
   #[clap(flatten)]
   verbose: Verbosity,
+
+  /// A directory where the Ocilot will hold his cache files.
+  ///
+  /// Be default it will be located in OS default path for cache files. For
+  /// example on Linux that's `$XDG_CACHE_HOME/ocilot` or $HOME/.cache/ocilot`.
+  #[clap(short = 'c', long = "cache-dir", global = true, required = false)]
+  cachedir: Option<PathBuf>,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, clap::ArgEnum)]
@@ -40,6 +48,14 @@ enum Commands {
   Publish(publish::Publish),
   /// List locally built images.
   List(list::List),
+}
+
+impl Args {
+  pub fn ocilot_dir(&self) -> Option<PathBuf> {
+    let default_dir = || dirs::cache_dir()
+      .map(|p| p.join("ocilot"));
+    self.cachedir.clone().or_else(default_dir)
+  }
 }
 
 pub(crate) trait Executable {
@@ -96,6 +112,8 @@ fn try_execute(ctx: ExecutionContext) -> Option<error::Error> {
 fn try_execute_with_args(ctx: ExecutionContext, args: Args) -> Option<error::Error> {
   let mut verbose = args.verbose.clone();
   verbose.set_default(Some(Level::INFO));
+  let cache_dir = args.ocilot_dir()
+    .expect("Failed to get cache dir");
   let cfg = logging::Config {
     format: match args.output {
       Format::Human => logging::Format::Compact,
@@ -103,6 +121,7 @@ fn try_execute_with_args(ctx: ExecutionContext, args: Args) -> Option<error::Err
     },
     kind: ctx.output.logger,
     level: verbose.log_level(),
+    cachedir: cache_dir,
   };
   logging::configured(cfg, || {
     // the subscriber based on RUST_LOG envvar will only be set as the default

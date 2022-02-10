@@ -1,5 +1,6 @@
-use std::fmt;
+use std::{fmt, fs};
 use std::fs::File;
+use std::path::PathBuf;
 use std::time::Instant;
 
 use tracing::{debug, error, Level};
@@ -19,6 +20,7 @@ pub struct Config {
   pub format: Format,
   pub kind: WriterKind,
   pub level: Option<Level>,
+  pub cachedir: PathBuf,
 }
 
 #[derive(Debug, PartialEq)]
@@ -34,9 +36,9 @@ pub enum WriterKind {
 }
 
 pub fn configured(cfg: Config, f: impl FnOnce() -> Option<error::Error>) -> Option<error::Error> {
-  let config_dir = dirs::config_dir().expect("Failed to get config dir");
-  let ocilot_dir = config_dir.join("ocilot");
-  let logfile_path = ocilot_dir.join("last-log.jsonl");
+  fs::create_dir_all(&cfg.cachedir)
+    .expect(format!("Failed to create cache-dir: {:?}", &cfg.cachedir).as_str());
+  let logfile_path = cfg.cachedir.join("last-log.jsonl");
   let logfile = File::options()
     .write(true)
     .create(true)
@@ -44,8 +46,7 @@ pub fn configured(cfg: Config, f: impl FnOnce() -> Option<error::Error>) -> Opti
     .open(logfile_path.as_path())
     .expect(format!("Failed to open log file: {:?}", logfile_path).as_str());
 
-  let (non_blocking, _guard) =
-    tracing_appender::non_blocking(logfile);
+  let (non_blocking, _guard) = tracing_appender::non_blocking(logfile);
 
   let file_layer = Layer::new()
     .json()
@@ -70,8 +71,7 @@ pub fn configured(cfg: Config, f: impl FnOnce() -> Option<error::Error>) -> Opti
     .with_target(true)
     .with_timer(Uptime::default());
 
-  let base_subscriber = Registry::default()
-    .with(file_layer);
+  let base_subscriber = Registry::default().with(file_layer);
 
   let handle_err = || {
     let maybe_err = f();
@@ -84,26 +84,26 @@ pub fn configured(cfg: Config, f: impl FnOnce() -> Option<error::Error>) -> Opti
         Cause::Args(_) => {}
         Cause::Unexpected(fatal) => {
           error!(
-            hint,
-            logfile = ?logfile_path,
-            debug = ?fatal,
-            source = ?fatal.source(),
-            "Unexpected: '{}'",
-            fatal
-          )
+                      hint,
+                      logfile = ?logfile_path,
+                      debug = ?fatal,
+                      source = ?fatal.source(),
+                      "Unexpected: '{}'",
+                      fatal
+                    )
         }
-      }
+      },
     }
     maybe_err
   };
 
   match cfg.format {
-    Format::Compact =>
-      tracing::subscriber::with_default(
-        base_subscriber.with(stderr_layer), handle_err),
-    Format::Json =>
-      tracing::subscriber::with_default(
-        base_subscriber.with(json_layer), handle_err),
+    Format::Compact => {
+      tracing::subscriber::with_default(base_subscriber.with(stderr_layer), handle_err)
+    }
+    Format::Json => {
+      tracing::subscriber::with_default(base_subscriber.with(json_layer), handle_err)
+    }
   }
 }
 
@@ -111,11 +111,12 @@ fn writer(cfg: &Config) -> BoxMakeWriter {
   let enable_level = cfg.level.unwrap_or(Level::ERROR);
   let enable = cfg.level.is_some();
   match cfg.kind {
-    WriterKind::Regular => BoxMakeWriter::new(std::io::stderr
-      .with_max_level(enable_level)
-      .with_filter(move |_| enable)
+    WriterKind::Regular => BoxMakeWriter::new(
+      std::io::stderr
+        .with_max_level(enable_level)
+        .with_filter(move |_| enable),
     ),
-    WriterKind::Test => BoxMakeWriter::new(TestWriter::default())
+    WriterKind::Test => BoxMakeWriter::new(TestWriter::default()),
   }
 }
 
