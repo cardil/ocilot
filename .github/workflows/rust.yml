@@ -14,13 +14,42 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  check:
+    name: Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Cargo check
+        run: cargo check --verbose
+
+  format:
+    name: Format
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Cargo fmt
+        run: cargo fmt --verbose --check
+
   build:
-    name: Build & Test
+    name: Build
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v2
       - name: Build
         run: cargo build --verbose
+        env:
+          RUSTFLAGS: -D warnings
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
       - name: Run tests
-        run: cargo test --verbose
+        run: cargo test --verbose -- --color always
+        env:
+          RUST_BACKTRACE: full
