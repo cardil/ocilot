@@ -1,8 +1,8 @@
 use std::collections::hash_map::DefaultHasher;
-use std::error;
 use std::hash::Hasher;
 
 use clap;
+use ocilot_core as core;
 
 #[derive(Debug)]
 pub struct Error {
@@ -13,7 +13,7 @@ impl Error {
   pub fn exit(&self) -> ! {
     match &self.cause {
       Cause::Args(err) => err.exit(),
-      Cause::Unexpected(err) => safe_exit(retcode(err)),
+      Cause::Core(err) => safe_exit(retcode(err)),
     }
   }
 }
@@ -21,7 +21,7 @@ impl Error {
 #[derive(Debug)]
 pub enum Cause {
   Args(clap::Error),
-  Unexpected(Box<dyn error::Error + Send + Sync>),
+  Core(core::error::Error),
 }
 
 fn safe_exit(code: i32) -> ! {
@@ -33,7 +33,7 @@ fn safe_exit(code: i32) -> ! {
   std::process::exit(code)
 }
 
-fn retcode(err: &Box<dyn error::Error + Send + Sync>) -> i32 {
+fn retcode(err: &core::error::Error) -> i32 {
   let mut hasher = DefaultHasher::new();
   hasher.write(err.to_string().as_bytes());
   // align to range: 30-255

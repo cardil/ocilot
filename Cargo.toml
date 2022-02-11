@@ -17,3 +17,6 @@ dirs = "4.0"
 
 [dependencies.ocilot-core]
 path = './core'
+
+[dependencies.ocilot-fs]
+path = './filesystem'

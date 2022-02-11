@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 use std::{fmt, fs};
 
+use ocilot_core::error::Error;
 use tracing::{debug, error, Level};
 use tracing_subscriber;
 use tracing_subscriber::fmt::format::Writer;
@@ -82,16 +83,22 @@ pub fn configured(cfg: Config, f: impl FnOnce() -> Option<error::Error>) -> Opti
       }
       Some(err) => match &err.cause {
         Cause::Args(_) => {}
-        Cause::Unexpected(fatal) => {
-          error!(
-            hint,
-            logfile = ?logfile_path,
-            debug = ?fatal,
-            source = ?fatal.source(),
-            "Unexpected: '{}'",
-            fatal
-          )
-        }
+        Cause::Core(cerr) => match cerr {
+          Error::Unexpected(fatal) => {
+            error!(
+              hint,
+              logfile = ?logfile_path,
+              debug = ?fatal,
+              source = ?fatal.source(),
+              "Unexpected: '{}'",
+              fatal
+            )
+          }
+          Error::InvalidInput { message, cause } => {
+            error!("Invalid arguments: {}", message);
+            debug!("Caused by: {:?}", cause);
+          }
+        },
       },
     }
     maybe_err

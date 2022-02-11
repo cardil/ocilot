@@ -149,9 +149,7 @@ mod tests {
         assert_eq!(err.kind, clap::ErrorKind::DisplayHelp);
         assert!(err.to_string().contains("Create and publish OCI images"));
       }
-      Cause::Unexpected(err) => {
-        panic!("{}", err);
-      }
+      cause => panic!("{:?}", cause),
     }
   }
 
@@ -168,9 +166,7 @@ mod tests {
         assert_eq!(err.kind, clap::ErrorKind::DisplayVersion);
         assert!(err.to_string().contains("Ocilot"));
       }
-      Cause::Unexpected(err) => {
-        panic!("{}", err);
-      }
+      cause => panic!("{:?}", cause),
     }
   }
 

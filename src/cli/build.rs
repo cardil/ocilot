@@ -1,10 +1,11 @@
 use std::io::{Error, ErrorKind};
 
 use clap::Args;
-use ocilot_core::build as core;
+use ocilot_core as core;
+use ocilot_fs::{file, glob};
 use regex::RegexBuilder;
 use tracing::instrument;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, info, trace, warn};
 
 use cli::{args, error};
 
@@ -55,21 +56,24 @@ pub struct Build {
 }
 
 impl args::Executable for Build {
-  fn execute(&self, args: &args::Args) -> Option<error::Error> {
-    trace!(args = ?args);
-    warn!("o_O");
-    error!("boom");
+  fn execute(&self, _: &args::Args) -> Option<error::Error> {
+    let cmd = core::build::Command {
+      artifact_resolver: Box::new(glob::ArtifactResolver {}),
+      files: Box::new(file::LocalFileSystem {}),
+    };
     debug!("Building...");
-    let c = self.to_core();
-    trace!(build = ?c);
-    info!("Build successful.");
+    let build = self.to_core();
+    let err = cmd.execute(&build);
+    if err.is_none() {
+      info!("Build successful.");
+    }
     None
   }
 }
 
 impl Build {
   #[instrument]
-  pub fn to_core(&self) -> core::Build {
+  pub fn to_core(&self) -> core::build::Build {
     let base = self.base.to_owned();
     let image = self.image.to_owned();
     let tags = self.tags.iter().cloned().collect();
@@ -86,7 +90,7 @@ impl Build {
       .map(|res| res.unwrap())
       .collect();
     trace!("inside to_core, within span");
-    return core::Build {
+    return core::build::Build {
       tags,
       base,
       image,
@@ -146,7 +150,7 @@ mod tests {
   use std::collections::HashSet;
   use std::io::{Error, ErrorKind};
 
-  use ocilot_core::build as core;
+  use ocilot_core as core;
 
   use crate::cli::build as cli;
 
@@ -215,7 +219,7 @@ mod tests {
       tags: vec!["latest".to_string(), "v1".to_string(), "v1.1".to_string()],
     };
     let got = input.to_core();
-    let want = core::Build {
+    let want = core::build::Build {
       base: base.to_string(),
       image: image.to_string(),
       artifacts: HashSet::from([

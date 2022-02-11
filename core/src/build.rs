@@ -1,6 +1,11 @@
+use error::Error;
 use std::collections::HashSet;
+use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
-use std::option::Option;
+
+use tracing::instrument;
+
+use crate::{error, fs, Arch, Artifact};
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct Build {
@@ -9,6 +14,25 @@ pub struct Build {
   pub image: String,
   pub arch: HashSet<Arch>,
   pub tags: HashSet<String>,
+}
+
+#[derive(Debug)]
+pub struct Command {
+  pub artifact_resolver: Box<dyn fs::ArtifactResolver>,
+  pub files: Box<dyn fs::Files>,
+}
+
+impl Command {
+  #[instrument]
+  pub fn execute(&self, b: &Build) -> Option<Error> {
+    for artifact in &b.artifacts {
+      let paths = self.artifact_resolver.resolve(artifact);
+      if paths.is_empty() {
+        return Some(Error::invalid_input("no Artifact found!"));
+      }
+    }
+    None
+  }
 }
 
 impl Hash for Build {
@@ -25,19 +49,4 @@ impl Hash for Build {
       tag.hash(state)
     }
   }
-}
-
-#[derive(PartialEq, Eq, Debug, Hash)]
-pub struct Artifact {
-  pub arch: Option<Arch>,
-  pub from: String,
-  pub to: String,
-}
-
-#[derive(PartialEq, Eq, Debug, Hash)]
-pub enum Arch {
-  Amd64,
-  Arm64,
-  Ppc64le,
-  S390x,
 }

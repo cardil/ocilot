@@ -1,8 +1,11 @@
 [package]
-name = "ocilot-core"
+name = "ocilot-fs"
 version = "0.1.0-pre"
 license = "Apache-2.0"
 edition = "2021"
 
 [dependencies]
 tracing = "0.1"
+
+[dependencies.ocilot-core]
+path = '../core'
