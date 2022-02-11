@@ -6,6 +6,7 @@ edition = "2021"
 
 [dependencies]
 tracing = "0.1"
+wax = "0.4"
 
 [dependencies.ocilot-core]
 path = '../core'

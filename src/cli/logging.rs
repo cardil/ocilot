@@ -65,7 +65,7 @@ pub fn configured(cfg: Config, f: impl FnOnce() -> Option<error::Error>) -> Opti
     .with_line_number(true)
     .with_target(true);
   let stderr_layer = Layer::new()
-    .compact()
+    .pretty()
     .with_writer(writer(&cfg))
     .with_file(false)
     .with_line_number(false)
@@ -88,11 +88,10 @@ pub fn configured(cfg: Config, f: impl FnOnce() -> Option<error::Error>) -> Opti
             error!(
               hint,
               logfile = ?logfile_path,
-              debug = ?fatal,
-              source = ?fatal.source(),
               "Unexpected: '{}'",
               fatal
-            )
+            );
+            debug!(cause = ?fatal, "Caused by")
           }
           Error::InvalidInput { message, cause } => {
             error!("Invalid arguments: {}", message);

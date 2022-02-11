@@ -6,7 +6,7 @@ pub mod fs;
 pub struct Artifact {
   pub arch: Option<Arch>,
   pub from: String,
-  pub to: String,
+  pub to: Option<String>,
 }
 
 #[derive(PartialEq, Eq, Debug, Hash)]

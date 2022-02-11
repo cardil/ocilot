@@ -16,6 +16,12 @@ impl Error {
       Cause::Core(err) => safe_exit(retcode(err)),
     }
   }
+
+  pub fn from_core(err: core::error::Error) -> Error {
+    Error {
+      cause: Cause::Core(err),
+    }
+  }
 }
 
 #[derive(Debug)]

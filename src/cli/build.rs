@@ -63,11 +63,11 @@ impl args::Executable for Build {
     };
     debug!("Building...");
     let build = self.to_core();
-    let err = cmd.execute(&build);
-    if err.is_none() {
+    let maybe_err = cmd.execute(&build);
+    if maybe_err.is_none() {
       info!("Build successful.");
     }
-    None
+    maybe_err.map(|err| error::Error::from_core(err))
   }
 }
 
@@ -101,10 +101,7 @@ impl Build {
 }
 
 fn invalid_format(repr: &String) -> Error {
-  Error::new(
-    ErrorKind::InvalidInput,
-    format!("invalid format for artifact: {:?}", repr),
-  )
+  Error::new(ErrorKind::InvalidInput, format!("bad format: {:?}", repr))
 }
 
 fn artifact_from_string(repr: &String) -> Result<core::Artifact, Error> {
@@ -112,19 +109,19 @@ fn artifact_from_string(repr: &String) -> Result<core::Artifact, Error> {
   let raw_re = r"^(?:(?P<arch>[^\n:]+):)?(?P<from>[^\n:]+)(?::(?P<to>[^\n:]+))?$";
   let re = RegexBuilder::new(raw_re).swap_greed(true).build().unwrap();
   match re.captures(repr) {
-    None => Result::Err(invalid_format(repr)),
+    None => Err(invalid_format(repr)),
     Some(cap) => cap
       .name("from")
       .ok_or(invalid_format(repr))
       .map(|m| String::from(m.as_str()))
       .and_then(|from| {
         let to = match cap.name("to") {
-          None => String::from(&from),
-          Some(m) => String::from(m.as_str()),
+          None => None,
+          Some(m) => Some(String::from(m.as_str())),
         };
         match cap.name("arch") {
-          None => Option::None,
-          Some(m) => Option::Some(arch_from_string(&m.as_str().to_string())),
+          None => None,
+          Some(m) => Some(arch_from_string(&m.as_str().to_string())),
         }
         .transpose()
         .map(|arch| core::Artifact { arch, from, to })
@@ -194,7 +191,7 @@ mod tests {
     assert_eq!(
       err.to_string(),
       concat!(
-        "invalid format for artifact: ",
+        "bad format: ",
         "\"amd64:target/acme-linux-amd64:/usr/bin/acme:foo\""
       )
     );
@@ -226,32 +223,32 @@ mod tests {
         core::Artifact {
           arch: None,
           from: "/absolute/file.txt".to_string(),
-          to: "/absolute/file.txt".to_string(),
+          to: None,
         },
         core::Artifact {
           arch: None,
           from: "relative/file.txt".to_string(),
-          to: "relative/file.txt".to_string(),
+          to: None,
         },
         core::Artifact {
           arch: None,
           from: "file.txt".to_string(),
-          to: "/usr/lib/renamed.txt".to_string(),
+          to: Some("/usr/lib/renamed.txt".to_string()),
         },
         core::Artifact {
           arch: None,
           from: "target/*.jar".to_string(),
-          to: "/usr/lib/app".to_string(),
+          to: Some("/usr/lib/app".to_string()),
         },
         core::Artifact {
           arch: Some(core::Arch::Amd64),
           from: "target/acme-linux-amd64".to_string(),
-          to: "/usr/bin/acme".to_string(),
+          to: Some("/usr/bin/acme".to_string()),
         },
         core::Artifact {
           arch: Some(core::Arch::Arm64),
           from: "target/acme-linux-arm64".to_string(),
-          to: "/usr/bin/acme".to_string(),
+          to: Some("/usr/bin/acme".to_string()),
         },
       ]),
       arch: HashSet::from([core::Arch::Amd64, core::Arch::Arm64]),

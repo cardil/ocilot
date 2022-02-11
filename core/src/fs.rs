@@ -1,10 +1,10 @@
-use crate::Artifact;
+use crate::{error, Artifact};
 use std::fmt::Debug;
 use std::io;
 use std::path::PathBuf;
 
 pub trait ArtifactResolver: Debug {
-  fn resolve(&self, ar: &Artifact) -> Vec<PathBuf>;
+  fn resolve(&self, ar: &Artifact) -> Result<Vec<PathBuf>, error::Error>;
 }
 
 pub trait Files: Debug {

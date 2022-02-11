@@ -188,6 +188,26 @@ mod tests {
     assert!(maybe_err.is_some());
   }
 
+  #[test]
+  fn build() {
+    let tec = TestExecutionContext::new(vec![
+      "ocilot",
+      "build",
+      "--artifact",
+      "**/*.rs",
+      "--artifact",
+      "Cargo.toml",
+      "--base",
+      "busybox",
+      "--image",
+      "quay.io/cardil/ocilot-sources",
+    ]);
+
+    let maybe_err = args::try_execute(tec.ctx());
+
+    assert!(maybe_err.is_none());
+  }
+
   struct TestExecutionContext<'a> {
     args: Vec<&'a str>,
     output: args::Output,

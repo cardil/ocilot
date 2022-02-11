@@ -1,8 +1,8 @@
-use error::Error;
 use std::collections::HashSet;
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
 
+use error::Error;
 use tracing::instrument;
 
 use crate::{error, fs, Arch, Artifact};
@@ -23,12 +23,18 @@ pub struct Command {
 }
 
 impl Command {
-  #[instrument]
+  #[instrument(ret, level = "trace")]
   pub fn execute(&self, b: &Build) -> Option<Error> {
     for artifact in &b.artifacts {
-      let paths = self.artifact_resolver.resolve(artifact);
+      let maybe_paths = self.artifact_resolver.resolve(artifact);
+      if maybe_paths.is_err() {
+        return maybe_paths.err();
+      }
+      let paths = maybe_paths.unwrap();
       if paths.is_empty() {
-        return Some(Error::invalid_input("no Artifact found!"));
+        return Some(Error::invalid_input(
+          format!("no artifact found: {}", artifact.from).as_str(),
+        ));
       }
     }
     None
