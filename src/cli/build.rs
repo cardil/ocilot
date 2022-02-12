@@ -3,6 +3,7 @@ use std::io::{Error, ErrorKind};
 use clap::Args;
 use ocilot_core as core;
 use ocilot_fs::{file, glob};
+use ocilot_oci::{cache, registry};
 use regex::RegexBuilder;
 use tracing::instrument;
 use tracing::{debug, info, trace, warn};
@@ -58,8 +59,14 @@ pub struct Build {
 impl args::Executable for Build {
   fn execute(&self, _: &args::Args) -> Option<error::Error> {
     let cmd = core::build::Command {
-      artifact_resolver: Box::new(glob::ArtifactResolver {}),
-      files: Box::new(file::LocalFileSystem {}),
+      fs: core::build::FileSystem {
+        resolver: Box::new(glob::ArtifactResolver {}),
+        files: Box::new(file::LocalFileSystem {}),
+      },
+      oci: core::build::Oci {
+        registry: Box::new(registry::Rest {}),
+        cache: Box::new(cache::HomeBased {}),
+      },
     };
     debug!("Building...");
     let build = self.to_core();
@@ -91,9 +98,8 @@ impl Build {
       .collect();
     trace!("inside to_core, within span");
     return core::build::Build {
-      tags,
       base,
-      image,
+      image: core::build::ImageName { image, tags },
       arch,
       artifacts,
     };
@@ -218,7 +224,10 @@ mod tests {
     let got = input.to_core();
     let want = core::build::Build {
       base: base.to_string(),
-      image: image.to_string(),
+      image: core::build::ImageName {
+        image: image.to_string(),
+        tags: HashSet::from(["latest".to_string(), "v1".to_string(), "v1.1".to_string()]),
+      },
       artifacts: HashSet::from([
         core::Artifact {
           arch: None,
@@ -252,7 +261,6 @@ mod tests {
         },
       ]),
       arch: HashSet::from([core::Arch::Amd64, core::Arch::Arm64]),
-      tags: HashSet::from(["latest".to_string(), "v1".to_string(), "v1.1".to_string()]),
     };
     assert_eq!(got, want);
   }

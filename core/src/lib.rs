@@ -1,6 +1,7 @@
 pub mod build;
 pub mod error;
 pub mod fs;
+pub mod oci;
 
 #[derive(PartialEq, Eq, Debug, Hash)]
 pub struct Artifact {

@@ -19,3 +19,6 @@ path = './core'
 
 [dependencies.ocilot-fs]
 path = './filesystem'
+
+[dependencies.ocilot-oci]
+path = './oci'
