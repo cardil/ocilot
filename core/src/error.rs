@@ -1,4 +1,7 @@
 use std::fmt::{Display, Formatter};
+use std::result;
+
+pub type Result<T> = result::Result<T, Error>;
 
 #[derive(Debug)]
 pub enum Error {
@@ -33,6 +36,12 @@ impl Display for Error {
         write!(f, "invalid input: {}", &message)
       }
     }
+  }
+}
+
+impl From<std::io::Error> for Error {
+  fn from(ioerr: std::io::Error) -> Self {
+    Error::Unexpected(Box::new(ioerr))
   }
 }
 

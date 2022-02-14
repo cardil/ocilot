@@ -70,11 +70,14 @@ impl args::Executable for Build {
     };
     debug!("Building...");
     let build = self.to_core();
-    let maybe_err = cmd.execute(&build);
-    if maybe_err.is_none() {
-      info!("Build successful.");
+    let maybe_built = cmd.execute(&build);
+    match maybe_built {
+      Ok(im) => {
+        info!(image = ?im.digest(), "Build successful.");
+        None
+      }
+      Err(err) => Some(error::Error::from_core(err)),
     }
-    maybe_err.map(|err| error::Error::from_core(err))
   }
 }
 

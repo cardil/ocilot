@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use tracing::instrument;
 
 use ocilot_core as core;
-use ocilot_core::error::Error as CoreError;
+use ocilot_core::error::{Error, Result};
 use wax;
 use wax::{Glob, GlobError};
 
@@ -12,7 +12,7 @@ pub struct ArtifactResolver {}
 
 impl core::fs::ArtifactResolver for ArtifactResolver {
   #[instrument(ret, level = "trace")]
-  fn resolve(&self, art: &core::Artifact) -> Result<Vec<PathBuf>, CoreError> {
+  fn resolve(&self, art: &core::Artifact) -> Result<Vec<PathBuf>> {
     let from = art.from.as_str();
     let path = Path::new(from);
     if path.exists() && path.is_file() {
@@ -22,27 +22,27 @@ impl core::fs::ArtifactResolver for ArtifactResolver {
     match wax::Glob::new(from) {
       Ok(glob) => match resolve_glob(glob) {
         Ok(paths) => Ok(paths),
-        Err(err) => Err(CoreError::Unexpected(Box::new(err))),
+        Err(err) => Err(Error::Unexpected(Box::new(err))),
       },
       Err(gerr) => match gerr {
         GlobError::Parse(perr) => Err(parse_error_as_core(perr)),
         GlobError::Rule(rerr) => Err(rule_error_as_core(rerr)),
-        GlobError::Walk(werr) => Err(CoreError::Unexpected(Box::new(werr))),
+        GlobError::Walk(werr) => Err(Error::Unexpected(Box::new(werr))),
         _ => panic!("can't get here"),
       },
     }
   }
 }
 
-fn parse_error_as_core(err: wax::ParseError) -> CoreError {
-  CoreError::InvalidInput {
+fn parse_error_as_core(err: wax::ParseError) -> Error {
+  Error::InvalidInput {
     message: format!("{}", err.expression()),
     cause: Some(Box::new(err.into_owned()) as Box<dyn std::error::Error>),
   }
 }
 
-fn rule_error_as_core(err: wax::RuleError) -> CoreError {
-  CoreError::InvalidInput {
+fn rule_error_as_core(err: wax::RuleError) -> Error {
+  Error::InvalidInput {
     message: format!("{}", err.expression()),
     cause: Some(Box::new(err.into_owned()) as Box<dyn std::error::Error>),
   }
