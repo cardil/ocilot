@@ -2,15 +2,14 @@ use std::io::{Error, ErrorKind};
 
 use clap::Args;
 use ocilot_core as core;
+use ocilot_core::build::Built;
 use ocilot_fs::{file, glob};
-use ocilot_oci::{cache, registry};
+use ocilot_oci::{cache, config, registry};
 use regex::RegexBuilder;
 use tracing::instrument;
 use tracing::{debug, info, trace, warn};
 
-use cli::{args, error};
-
-use crate::cli;
+use crate::cli::{args, error};
 
 #[derive(Debug, Args)]
 pub struct Build {
@@ -57,28 +56,38 @@ pub struct Build {
 }
 
 impl args::Executable for Build {
-  fn execute(&self, _: &args::Args) -> Option<error::Error> {
-    let cmd = core::build::Command {
-      fs: core::build::FileSystem {
-        resolver: Box::new(glob::ArtifactResolver {}),
-        files: Box::new(file::LocalFileSystem {}),
-      },
-      oci: core::build::Oci {
-        registry: Box::new(registry::Rest {}),
-        cache: Box::new(cache::HomeBased {}),
-      },
-    };
+  fn execute(&self, args: &args::Args) -> error::Result<()> {
+    let cmd = new_command(args)?;
     debug!("Building...");
     let build = self.to_core();
-    let maybe_built = cmd.execute(&build);
-    match maybe_built {
-      Ok(im) => {
-        info!(image = ?im.digest(), "Build successful.");
-        None
-      }
-      Err(err) => Some(error::Error::from_core(err)),
-    }
+    let result = cmd.execute(&build);
+    result
+      .map(|built| {
+        match built {
+          Built::Cached(ii) => info!(image = ?ii.digest, "Image already built"),
+          Built::Real(ii) => info!(image = ?ii.digest, "Build successful"),
+        };
+      })
+      .map_err(|err| error::Error::from(err))
   }
+}
+
+fn new_command(args: &args::Args) -> error::Result<core::build::Command> {
+  let workdir = args.ocilot_dir()?;
+  let registry = Box::new(registry::Rest {
+    config: Box::new(config::Config {
+      workdir: workdir.clone(),
+    }) as Box<dyn core::oci::Config>,
+  });
+  let cache = Box::new(cache::HomeBased {
+    config: Box::new(config::Config { workdir }) as Box<dyn core::oci::Config>,
+  });
+  let resolver = Box::new(glob::ArtifactResolver {});
+  let files = Box::new(file::LocalFileSystem {});
+  Ok(core::build::Command {
+    fs: core::build::FileSystem { resolver, files },
+    oci: core::build::Oci { registry, cache },
+  })
 }
 
 impl Build {
@@ -115,7 +124,8 @@ fn invalid_format(repr: &String) -> Error {
 
 fn artifact_from_string(repr: &String) -> Result<core::Artifact, Error> {
   // Ref.: https://regex101.com/r/q2qVXt/1
-  let raw_re = r"^(?:(?P<arch>[^\n:]+):)?(?P<from>[^\n:]+)(?::(?P<to>[^\n:]+))?$";
+  let raw_re =
+    r"^(?:(?P<arch>[^\n:]+):)?(?P<from>[^\n:]+)(?::(?P<to>[^\n:]+))?$";
   let re = RegexBuilder::new(raw_re).swap_greed(true).build().unwrap();
   match re.captures(repr) {
     None => Err(invalid_format(repr)),
@@ -169,7 +179,10 @@ mod tests {
       ("s390x", Result::Ok(core::Arch::S390x)),
       (
         "invalid",
-        Result::Err(Error::new(ErrorKind::InvalidInput, "unknown arch: invalid")),
+        Result::Err(Error::new(
+          ErrorKind::InvalidInput,
+          "unknown arch: invalid",
+        )),
       ),
     ];
 
@@ -229,7 +242,11 @@ mod tests {
       base: base.to_string(),
       image: core::build::ImageName {
         image: image.to_string(),
-        tags: HashSet::from(["latest".to_string(), "v1".to_string(), "v1.1".to_string()]),
+        tags: HashSet::from([
+          "latest".to_string(),
+          "v1".to_string(),
+          "v1.1".to_string(),
+        ]),
       },
       artifacts: HashSet::from([
         core::Artifact {

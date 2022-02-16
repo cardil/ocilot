@@ -1,7 +1,7 @@
 use std::io;
 
 use clap::Args;
-use ocilot_core::error::Error::Unexpected;
+use ocilot_core as core;
 use tracing::info;
 use Cause::Core;
 
@@ -14,10 +14,10 @@ use crate::cli::error::Cause;
 pub struct Publish {}
 
 impl args::Executable for Publish {
-  fn execute(&self, args: &args::Args) -> Option<error::Error> {
+  fn execute(&self, args: &args::Args) -> error::Result<()> {
     info!(args = ?args, "Publishing: {:?}", self);
-    Some(error::Error {
-      cause: Core(Unexpected(Box::new(io::Error::new(
+    Err(error::Error {
+      cause: Core(core::error::Error::Unexpected(Box::new(io::Error::new(
         io::ErrorKind::InvalidData,
         io::Error::new(io::ErrorKind::BrokenPipe, "Not yet implemented"),
       )))),

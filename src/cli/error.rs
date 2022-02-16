@@ -4,6 +4,8 @@ use std::hash::Hasher;
 use clap;
 use ocilot_core as core;
 
+pub type Result<T> = std::result::Result<T, Error>;
+
 #[derive(Debug)]
 pub struct Error {
   pub(crate) cause: Cause,
@@ -16,8 +18,10 @@ impl Error {
       Cause::Core(err) => safe_exit(retcode(err)),
     }
   }
+}
 
-  pub fn from_core(err: core::error::Error) -> Error {
+impl From<core::error::Error> for Error {
+  fn from(err: ocilot_core::error::Error) -> Self {
     Error {
       cause: Cause::Core(err),
     }

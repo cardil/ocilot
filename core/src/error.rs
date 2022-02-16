@@ -5,6 +5,7 @@ pub type Result<T> = result::Result<T, Error>;
 
 #[derive(Debug)]
 pub enum Error {
+  Bug(String),
   Unexpected(Box<dyn std::error::Error>),
   InvalidInput {
     message: String,
@@ -35,6 +36,7 @@ impl Display for Error {
       Error::InvalidInput { message, cause: _ } => {
         write!(f, "invalid input: {}", &message)
       }
+      Error::Bug(msg) => write!(f, "bug: {}", msg),
     }
   }
 }
@@ -53,6 +55,7 @@ impl std::error::Error for Error {
         None => None,
         Some(err) => Some(&***Box::from(err)),
       },
+      Error::Bug(_) => None,
     }
   }
 }

@@ -4,11 +4,11 @@ use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::time::SystemTime;
 
-use error::Error;
-use tracing::{instrument, warn};
+use tracing::{info, instrument};
 
-use crate::oci::Image;
-use crate::{error, fs, oci, Arch, Artifact};
+use crate::error::{Error, Result};
+use crate::oci::Input;
+use crate::{fs, oci, Arch, Artifact};
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct Build {
@@ -18,7 +18,7 @@ pub struct Build {
   pub arch: HashSet<Arch>,
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub struct ImageName {
   pub image: String,
   pub tags: HashSet<String>,
@@ -47,24 +47,6 @@ struct Payload {
   parts: Vec<Part>,
 }
 
-impl Payload {
-  fn modification(&self, files: &Box<dyn fs::Files>) -> SystemTime {
-    let mut newest = SystemTime::UNIX_EPOCH;
-    for part in &self.parts {
-      let mt = files
-        .modified(&part.from)
-        .expect("couldn't resolve part mod time");
-      if mt > newest {
-        newest = mt;
-      }
-    }
-    if newest == SystemTime::UNIX_EPOCH {
-      panic!("possible bug. no modification date for any artifact was found");
-    }
-    newest
-  }
-}
-
 #[derive(PartialEq, Eq, Debug)]
 struct Part {
   arch: Option<Arch>,
@@ -72,20 +54,55 @@ struct Part {
   to: Option<String>,
 }
 
+#[derive(PartialEq, Eq, Debug)]
+pub struct ImageInfo {
+  pub digest: String,
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub enum Built {
+  Cached(ImageInfo),
+  Real(ImageInfo),
+}
+
 impl Command {
   #[instrument(ret, level = "trace")]
-  pub fn execute(&self, b: &Build) -> error::Result<Box<dyn Image>> {
-    let payload = self.build_payload(b)?;
-    let already_built = self.lookup_built(&payload, &b.image);
+  pub fn execute(&self, b: &Build) -> Result<Built> {
+    let payload = self.construct_payload(b)?;
+    let already_built = self.lookup_built(&payload, &b.image)?;
     if already_built.is_some() {
-      return Ok(already_built.unwrap());
+      let im = already_built.unwrap();
+      return Ok(Built::Cached(ImageInfo {
+        digest: im.digest(),
+      }));
     }
+    let base = self.oci.registry.fetch(&b.base)?;
+    info!(digest = ?base.digest(), "Base image fetched");
+    let inputs = self.open_payload(payload)?;
+    let constr = base.construct_new(&b.arch);
+    constr.add(inputs);
+    let built = constr.build(&b.image)?;
 
-    Err(error::Error::invalid_input("AAAAA"))
+    Ok(Built::Real(ImageInfo {
+      digest: built.digest(),
+    }))
+  }
+
+  fn open_payload(&self, payload: Payload) -> Result<Vec<Input>> {
+    let mut files = Vec::new();
+    for part in payload.parts {
+      let input = self.fs.files.read(&part.from).map(|read| Input {
+        arch: part.arch.clone(),
+        from: read,
+        to: part.to.clone(),
+      })?;
+      files.push(input);
+    }
+    Ok(files)
   }
 
   #[instrument(ret, level = "trace")]
-  fn build_payload(&self, b: &Build) -> error::Result<Payload> {
+  fn construct_payload(&self, b: &Build) -> Result<Payload> {
     let mut parts = Vec::new();
     for artifact in &b.artifacts {
       let maybe_paths = self.fs.resolver.resolve(artifact);
@@ -112,20 +129,41 @@ impl Command {
   }
 
   #[instrument(ret, level = "trace")]
-  fn lookup_built(&self, payload: &Payload, im: &ImageName) -> Option<Box<dyn oci::Image>> {
-    let result = self.oci.cache.list();
-    let images = result.unwrap_or_else(|err| {
-      warn!(cause = ?err, "Couldn't list local cache");
-      Vec::default()
-    });
+  fn lookup_built(
+    &self,
+    payload: &Payload,
+    im: &ImageName,
+  ) -> Result<Option<Box<dyn oci::Image>>> {
+    let images = self.oci.cache.list()?;
     for image in images {
       if image.name() == *im {
-        if image.created() >= payload.modification(&self.fs.files) {
-          return Some(image);
+        let mt = self.payload_modtime(payload)?;
+        if image.created() >= mt {
+          return Ok(Some(image));
         }
       }
     }
-    None
+    Ok(None)
+  }
+
+  fn payload_modtime(&self, payload: &Payload) -> Result<SystemTime> {
+    let mut newest = SystemTime::UNIX_EPOCH;
+    for part in &payload.parts {
+      let mt = self.fs.files.modified(&part.from)?;
+      if mt > newest {
+        newest = mt;
+      }
+    }
+    if newest == SystemTime::UNIX_EPOCH {
+      return Err(Error::Bug(
+        concat!(
+          "possible bug. no modification date ",
+          "for any artifact was found"
+        )
+        .to_string(),
+      ));
+    }
+    Ok(newest)
   }
 }
 
