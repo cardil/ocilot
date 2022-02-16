@@ -1,0 +1,18 @@
+[package]
+name = "ocilot-oci"
+version = "0.1.0-pre"
+license = "Apache-2.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tracing = "0.1"
+oci-distribution = { git = "https://github.com/krustlet/oci-distribution", rev = "c7274c40" }
+futures = "0.3"
+tokio = { version = "1", features = ["full"]}
+serde = "1.0"
+serde_json = "1.0"
+
+[dependencies.ocilot-core]
+path = '../core'

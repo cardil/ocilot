@@ -7,9 +7,9 @@ use crate::cli;
 pub struct List {}
 
 impl cli::args::Executable for List {
-  fn execute(&self, args: &cli::args::Args) -> Option<cli::error::Error> {
+  fn execute(&self, args: &cli::args::Args) -> cli::error::Result<()> {
     trace!(args = ?args);
     info!("Listing: {:?}", self);
-    None
+    Ok(())
   }
 }

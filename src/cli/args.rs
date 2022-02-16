@@ -4,9 +4,10 @@ use std::path::PathBuf;
 
 use clap;
 use clap::Parser;
+use ocilot_core as core;
 use tracing::Level;
 
-use crate::cli::error;
+use crate::cli::error::{Cause, Error, Result};
 use crate::cli::list;
 use crate::cli::publish;
 use crate::cli::verbosity::Verbosity;
@@ -51,14 +52,20 @@ enum Commands {
 }
 
 impl Args {
-  pub fn ocilot_dir(&self) -> Option<PathBuf> {
+  pub fn ocilot_dir(&self) -> Result<PathBuf> {
     let default_dir = || dirs::cache_dir().map(|p| p.join("ocilot"));
-    self.cachedir.clone().or_else(default_dir)
+    self
+      .cachedir
+      .clone()
+      .or_else(default_dir)
+      .ok_or(Error::from(core::error::Error::Bug(
+        "can't get Ocilot work dir".to_string(),
+      )))
   }
 }
 
 pub(crate) trait Executable {
-  fn execute(&self, args: &Args) -> Option<error::Error>;
+  fn execute(&self, args: &Args) -> Result<()>;
 }
 
 #[derive(Debug)]
@@ -92,25 +99,27 @@ impl ExecutionContext {
 }
 
 pub fn execute(ox: Option<ExecutionContext>) {
-  try_execute(ox.unwrap_or(ExecutionContext::default())).map(|err| err.exit());
-}
-
-fn try_execute(ctx: ExecutionContext) -> Option<error::Error> {
-  let args = ctx.args.clone();
-  let result_args = <Args as clap::Parser>::try_parse_from(args);
-
-  match result_args {
-    Ok(args) => try_execute_with_args(ctx, args),
-    Err(err) => Some(error::Error {
-      cause: error::Cause::Args(err),
-    }),
+  let ctx = ox.unwrap_or(ExecutionContext::default());
+  match try_execute(ctx) {
+    Ok(_) => {}
+    Err(err) => err.exit(),
   }
 }
 
-fn try_execute_with_args(ctx: ExecutionContext, args: Args) -> Option<error::Error> {
+fn try_execute(ctx: ExecutionContext) -> Result<()> {
+  let args = ctx.args.clone();
+  let parsed_args =
+    <Args as clap::Parser>::try_parse_from(args).map_err(|err| Error {
+      cause: Cause::Args(err),
+    })?;
+
+  try_execute_with_args(ctx, parsed_args)
+}
+
+fn try_execute_with_args(ctx: ExecutionContext, args: Args) -> Result<()> {
   let mut verbose = args.verbose.clone();
   verbose.set_default(Some(Level::INFO));
-  let cache_dir = args.ocilot_dir().expect("Failed to get cache dir");
+  let cache_dir = args.ocilot_dir()?;
   let cfg = logging::Config {
     format: match args.output {
       Format::Human => logging::Format::Compact,
@@ -140,18 +149,16 @@ mod tests {
   fn help() {
     let tec = TestExecutionContext::new(vec!["ocilot", "help"]);
 
-    let maybe_err = args::try_execute(tec.ctx());
+    let result = args::try_execute(tec.ctx());
 
-    assert!(maybe_err.is_some());
-    let rerr = maybe_err.unwrap();
-    match &rerr.cause {
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    match &err.cause {
       Cause::Args(err) => {
         assert_eq!(err.kind, clap::ErrorKind::DisplayHelp);
         assert!(err.to_string().contains("Create and publish OCI images"));
       }
-      Cause::Unexpected(err) => {
-        panic!("{}", err);
-      }
+      cause => panic!("{:?}", cause),
     }
   }
 
@@ -159,37 +166,56 @@ mod tests {
   fn version() {
     let tec = TestExecutionContext::new(vec!["ocilot", "--version"]);
 
-    let maybe_err = args::try_execute(tec.ctx());
+    let result = args::try_execute(tec.ctx());
 
-    assert!(maybe_err.is_some());
-    let rerr = maybe_err.unwrap();
-    match &rerr.cause {
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    match &err.cause {
       Cause::Args(err) => {
         assert_eq!(err.kind, clap::ErrorKind::DisplayVersion);
         assert!(err.to_string().contains("Ocilot"));
       }
-      Cause::Unexpected(err) => {
-        panic!("{}", err);
-      }
+      cause => panic!("{:?}", cause),
     }
   }
 
   #[test]
   fn list() {
-    let tec = TestExecutionContext::new(vec!["ocilot", "list", "--output", "json"]);
+    let tec =
+      TestExecutionContext::new(vec!["ocilot", "list", "--output", "json"]);
 
-    let maybe_err = args::try_execute(tec.ctx());
+    let result = args::try_execute(tec.ctx());
 
-    assert!(maybe_err.is_none());
+    assert!(result.is_ok());
   }
 
   #[test]
   fn publish() {
     let tec = TestExecutionContext::new(vec!["ocilot", "publish"]);
 
-    let maybe_err = args::try_execute(tec.ctx());
+    let result = args::try_execute(tec.ctx());
 
-    assert!(maybe_err.is_some());
+    assert!(result.is_err());
+  }
+
+  #[test]
+  fn build() {
+    let tec = TestExecutionContext::new(vec![
+      "ocilot",
+      "build",
+      "--artifact",
+      "**/*.rs",
+      "--artifact",
+      "Cargo.toml",
+      "--base",
+      "gcr.io/distroless/static-debian11",
+      "--image",
+      "quay.io/cardil/ocilot-sources",
+    ]);
+
+    let result = args::try_execute(tec.ctx());
+
+    assert!(result.is_ok());
   }
 
   struct TestExecutionContext<'a> {

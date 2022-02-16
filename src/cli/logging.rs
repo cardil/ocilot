@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 use std::{fmt, fs};
 
-use tracing::{debug, error, Level};
+use tracing::{debug, error, trace, Level};
 use tracing_subscriber;
 use tracing_subscriber::fmt::format::Writer;
 use tracing_subscriber::fmt::time::FormatTime;
@@ -12,8 +12,8 @@ use tracing_subscriber::fmt::{Layer, TestWriter};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::Registry;
 
-use crate::cli::error;
-use crate::cli::error::Cause;
+use crate::cli::error::{Cause, Result};
+use ocilot_core as core;
 
 #[derive(Debug, PartialEq)]
 pub struct Config {
@@ -35,9 +35,10 @@ pub enum WriterKind {
   Test,
 }
 
-pub fn configured(cfg: Config, f: impl FnOnce() -> Option<error::Error>) -> Option<error::Error> {
-  fs::create_dir_all(&cfg.cachedir)
-    .expect(format!("Failed to create cache-dir: {:?}", &cfg.cachedir).as_str());
+pub fn configured(cfg: Config, f: impl FnOnce() -> Result<()>) -> Result<()> {
+  fs::create_dir_all(&cfg.cachedir).expect(
+    format!("Failed to create cache-dir: {:?}", &cfg.cachedir).as_str(),
+  );
   let logfile_path = cfg.cachedir.join("last-log.jsonl");
   let logfile = File::options()
     .write(true)
@@ -64,10 +65,10 @@ pub fn configured(cfg: Config, f: impl FnOnce() -> Option<error::Error>) -> Opti
     .with_line_number(true)
     .with_target(true);
   let stderr_layer = Layer::new()
-    .compact()
+    .pretty()
     .with_writer(writer(&cfg))
-    .with_file(false)
-    .with_line_number(false)
+    .with_file(cfg.kind == WriterKind::Test)
+    .with_line_number(cfg.kind == WriterKind::Test)
     .with_target(true)
     .with_timer(Uptime::default());
 
@@ -75,33 +76,47 @@ pub fn configured(cfg: Config, f: impl FnOnce() -> Option<error::Error>) -> Opti
 
   let handle_err = || {
     let maybe_err = f();
-    let hint = "Consider checking the logfile for complete logs of last execution";
+    let hint =
+      "Consider checking the logfile for complete logs of last execution";
     match &maybe_err {
-      None => {
+      Ok(_) => {
         debug!(hint, logfile = ?logfile_path);
       }
-      Some(err) => match &err.cause {
+      Err(err) => match &err.cause {
         Cause::Args(_) => {}
-        Cause::Unexpected(fatal) => {
-          error!(
+        Cause::Core(cerr) => match cerr {
+          core::error::Error::Unexpected(fatal) => {
+            error!(
+              hint,
+              logfile = ?logfile_path,
+              "Unexpected: '{}'", fatal
+            );
+            debug!(cause = ?fatal, "Caused by")
+          }
+          core::error::Error::InvalidInput { message, cause } => {
+            error!("Invalid arguments: {}", message);
+            trace!("Caused by: {:?}", cause);
+          }
+          core::error::Error::Bug(bug) => error!(
             hint,
             logfile = ?logfile_path,
-            debug = ?fatal,
-            source = ?fatal.source(),
-            "Unexpected: '{}'",
-            fatal
-          )
-        }
+            "Bug found: {:?}", bug
+          ),
+        },
       },
     }
     maybe_err
   };
 
   match cfg.format {
-    Format::Compact => {
-      tracing::subscriber::with_default(base_subscriber.with(stderr_layer), handle_err)
-    }
-    Format::Json => tracing::subscriber::with_default(base_subscriber.with(json_layer), handle_err),
+    Format::Compact => tracing::subscriber::with_default(
+      base_subscriber.with(stderr_layer),
+      handle_err,
+    ),
+    Format::Json => tracing::subscriber::with_default(
+      base_subscriber.with(json_layer),
+      handle_err,
+    ),
   }
 }
 

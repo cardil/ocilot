@@ -1,14 +1,15 @@
 use std::io::{Error, ErrorKind};
 
 use clap::Args;
-use ocilot_core::build as core;
+use ocilot_core as core;
+use ocilot_core::build::Built;
+use ocilot_fs::{file, glob};
+use ocilot_oci::{cache, config, registry};
 use regex::RegexBuilder;
 use tracing::instrument;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, info, trace, warn};
 
-use cli::{args, error};
-
-use crate::cli;
+use crate::cli::{args, error};
 
 #[derive(Debug, Args)]
 pub struct Build {
@@ -55,21 +56,43 @@ pub struct Build {
 }
 
 impl args::Executable for Build {
-  fn execute(&self, args: &args::Args) -> Option<error::Error> {
-    trace!(args = ?args);
-    warn!("o_O");
-    error!("boom");
+  fn execute(&self, args: &args::Args) -> error::Result<()> {
+    let cmd = new_command(args)?;
     debug!("Building...");
-    let c = self.to_core();
-    trace!(build = ?c);
-    info!("Build successful.");
-    None
+    let build = self.to_core();
+    let result = cmd.execute(&build);
+    result
+      .map(|built| {
+        match built {
+          Built::Cached(ii) => info!(image = ?ii.digest, "Image already built"),
+          Built::Real(ii) => info!(image = ?ii.digest, "Build successful"),
+        };
+      })
+      .map_err(|err| error::Error::from(err))
   }
+}
+
+fn new_command(args: &args::Args) -> error::Result<core::build::Command> {
+  let workdir = args.ocilot_dir()?;
+  let registry = Box::new(registry::Rest {
+    config: Box::new(config::Config {
+      workdir: workdir.clone(),
+    }) as Box<dyn core::oci::Config>,
+  });
+  let cache = Box::new(cache::HomeBased {
+    config: Box::new(config::Config { workdir }) as Box<dyn core::oci::Config>,
+  });
+  let resolver = Box::new(glob::ArtifactResolver {});
+  let files = Box::new(file::LocalFileSystem {});
+  Ok(core::build::Command {
+    fs: core::build::FileSystem { resolver, files },
+    oci: core::build::Oci { registry, cache },
+  })
 }
 
 impl Build {
   #[instrument]
-  pub fn to_core(&self) -> core::Build {
+  pub fn to_core(&self) -> core::build::Build {
     let base = self.base.to_owned();
     let image = self.image.to_owned();
     let tags = self.tags.iter().cloned().collect();
@@ -86,10 +109,9 @@ impl Build {
       .map(|res| res.unwrap())
       .collect();
     trace!("inside to_core, within span");
-    return core::Build {
-      tags,
+    return core::build::Build {
       base,
-      image,
+      image: core::build::ImageName { image, tags },
       arch,
       artifacts,
     };
@@ -97,30 +119,28 @@ impl Build {
 }
 
 fn invalid_format(repr: &String) -> Error {
-  Error::new(
-    ErrorKind::InvalidInput,
-    format!("invalid format for artifact: {:?}", repr),
-  )
+  Error::new(ErrorKind::InvalidInput, format!("bad format: {:?}", repr))
 }
 
 fn artifact_from_string(repr: &String) -> Result<core::Artifact, Error> {
   // Ref.: https://regex101.com/r/q2qVXt/1
-  let raw_re = r"^(?:(?P<arch>[^\n:]+):)?(?P<from>[^\n:]+)(?::(?P<to>[^\n:]+))?$";
+  let raw_re =
+    r"^(?:(?P<arch>[^\n:]+):)?(?P<from>[^\n:]+)(?::(?P<to>[^\n:]+))?$";
   let re = RegexBuilder::new(raw_re).swap_greed(true).build().unwrap();
   match re.captures(repr) {
-    None => Result::Err(invalid_format(repr)),
+    None => Err(invalid_format(repr)),
     Some(cap) => cap
       .name("from")
       .ok_or(invalid_format(repr))
       .map(|m| String::from(m.as_str()))
       .and_then(|from| {
         let to = match cap.name("to") {
-          None => String::from(&from),
-          Some(m) => String::from(m.as_str()),
+          None => None,
+          Some(m) => Some(String::from(m.as_str())),
         };
         match cap.name("arch") {
-          None => Option::None,
-          Some(m) => Option::Some(arch_from_string(&m.as_str().to_string())),
+          None => None,
+          Some(m) => Some(arch_from_string(&m.as_str().to_string())),
         }
         .transpose()
         .map(|arch| core::Artifact { arch, from, to })
@@ -146,7 +166,7 @@ mod tests {
   use std::collections::HashSet;
   use std::io::{Error, ErrorKind};
 
-  use ocilot_core::build as core;
+  use ocilot_core as core;
 
   use crate::cli::build as cli;
 
@@ -159,7 +179,10 @@ mod tests {
       ("s390x", Result::Ok(core::Arch::S390x)),
       (
         "invalid",
-        Result::Err(Error::new(ErrorKind::InvalidInput, "unknown arch: invalid")),
+        Result::Err(Error::new(
+          ErrorKind::InvalidInput,
+          "unknown arch: invalid",
+        )),
       ),
     ];
 
@@ -190,7 +213,7 @@ mod tests {
     assert_eq!(
       err.to_string(),
       concat!(
-        "invalid format for artifact: ",
+        "bad format: ",
         "\"amd64:target/acme-linux-amd64:/usr/bin/acme:foo\""
       )
     );
@@ -215,43 +238,49 @@ mod tests {
       tags: vec!["latest".to_string(), "v1".to_string(), "v1.1".to_string()],
     };
     let got = input.to_core();
-    let want = core::Build {
+    let want = core::build::Build {
       base: base.to_string(),
-      image: image.to_string(),
+      image: core::build::ImageName {
+        image: image.to_string(),
+        tags: HashSet::from([
+          "latest".to_string(),
+          "v1".to_string(),
+          "v1.1".to_string(),
+        ]),
+      },
       artifacts: HashSet::from([
         core::Artifact {
           arch: None,
           from: "/absolute/file.txt".to_string(),
-          to: "/absolute/file.txt".to_string(),
+          to: None,
         },
         core::Artifact {
           arch: None,
           from: "relative/file.txt".to_string(),
-          to: "relative/file.txt".to_string(),
+          to: None,
         },
         core::Artifact {
           arch: None,
           from: "file.txt".to_string(),
-          to: "/usr/lib/renamed.txt".to_string(),
+          to: Some("/usr/lib/renamed.txt".to_string()),
         },
         core::Artifact {
           arch: None,
           from: "target/*.jar".to_string(),
-          to: "/usr/lib/app".to_string(),
+          to: Some("/usr/lib/app".to_string()),
         },
         core::Artifact {
           arch: Some(core::Arch::Amd64),
           from: "target/acme-linux-amd64".to_string(),
-          to: "/usr/bin/acme".to_string(),
+          to: Some("/usr/bin/acme".to_string()),
         },
         core::Artifact {
           arch: Some(core::Arch::Arm64),
           from: "target/acme-linux-arm64".to_string(),
-          to: "/usr/bin/acme".to_string(),
+          to: Some("/usr/bin/acme".to_string()),
         },
       ]),
       arch: HashSet::from([core::Arch::Amd64, core::Arch::Arm64]),
-      tags: HashSet::from(["latest".to_string(), "v1".to_string(), "v1.1".to_string()]),
     };
     assert_eq!(got, want);
   }
